@@ -9,7 +9,8 @@ import {
   FloatArrayType,
   DateType,
   arrayOf,
-  BoolType
+  BoolType,
+  JSONType
 } from "../dataTypes";
 import { TAB } from "./utilities";
 import { createOperation as createOperationOriginal, createInput, createType } from "./gqlSchemaHelpers";
@@ -29,6 +30,7 @@ export default function createGraphqlTypeSchema(objectToCreate) {
   let overrides = new Set(extras.overrides || []);
   let schemaSources = extras.schemaSources || [];
   let resolvedFields = objectToCreate.resolvedFields || {};
+  let readonly = objectToCreate.readonly;
 
   const createOperation = createOperationOriginal.bind(null, { overrides });
 
@@ -46,39 +48,51 @@ export default function createGraphqlTypeSchema(objectToCreate) {
   return `${imports.length ? imports.join("\n") + "\n\n" : ""}export const type = \`
   
 ${[
-    createType(name, [
-      ...Object.keys(fields).map(k => `${k}: ${fieldType(fields[k])}`),
-      ...Object.keys(resolvedFields).map(k => `${k}: ${resolvedFields[k]}`),
-      ...relationshipEntries.map(relationshipResolver)
-    ]),
-    ...(objectToCreate.table
-      ? [
-          createType(`${name}QueryResults`, [`${name}s: [${name}]`, `Meta: QueryResultsMetadata`]),
-          createType(`${name}SingleQueryResult`, [`${name}: ${name}`]),
-          createType(`${name}MutationResult`, [`success: Boolean`, `${name}: ${name}`]),
-          createType(`${name}MutationResultMulti`, [`success: Boolean`, `${name}s: [${name}]`]),
-          createType(`${name}BulkMutationResult`, [`success: Boolean`])
-        ]
-      : []),
-    createInput(`${name}Input`, [
-      ...Object.keys(fields).map(k => `${k}: ${fieldType(fields[k], true)}`),
-      ...Object.keys(relationships).map(k => `${k}: ${relationshipType(relationships[k], true)}`)
-    ]),
-    createInput(`${name}MutationInput`, [
-      ...flatMap(Object.keys(fields).filter(k => k != "_id"), k => fieldMutations(k, fields)),
-      ...Object.keys(relationships).map(
-        k =>
-          relationships[k].__isArray
-            ? `${k}_ADD: ${relationshipType(relationships[k], true)}`
-            : `${k}_SET: ${relationshipType(relationships[k], true)}`
-      )
-    ]),
-    objectToCreate.__usedInArray ? createInput(`${name}ArrayMutationInput`, ["index: Int", `Updates: ${name}MutationInput`]) : null,
-    createInput(`${name}Sort`, Object.keys(fields).map(k => `${k}: Int`)),
-    createInput(`${name}Filters`, allQueryFields.concat([`OR: [${name}Filters]`]))
-  ]
-    .filter(s => s)
-    .join("\n\n")}
+  createType(name, [
+    ...Object.keys(fields).map(k => `${k}: ${fieldType(fields[k])}`),
+    ...Object.keys(resolvedFields).map(k => `${k}: ${resolvedFields[k]}`),
+    ...relationshipEntries.map(relationshipResolver)
+  ]),
+  ...(objectToCreate.table
+    ? [
+        createType(`${name}QueryResults`, [`${name}s: [${name}]`, `Meta: QueryResultsMetadata`]),
+        createType(`${name}SingleQueryResult`, [`${name}: ${name}`]),
+        createType(`${name}MutationResult`, [`${name}: ${name}`, `success: Boolean`, "Meta: MutationResultInfo"]),
+        createType(`${name}MutationResultMulti`, [`${name}s: [${name}]`, `success: Boolean`, "Meta: MutationResultInfo"]),
+        createType(`${name}BulkMutationResult`, [`success: Boolean`, "Meta: MutationResultInfo"])
+      ]
+    : []),
+  objectToCreate.hasOneToManyRelationship
+    ? createInput(`${name}InputLocal`, [
+        ...Object.keys(fields).map(k => `${k}: ${fieldType(fields[k], true)}`),
+        ...Object.entries(relationships)
+          .filter(([k, rel]) => !rel.readonly && !rel.oneToMany)
+          .map(([k, rel]) => `${k}: ${relationshipType(rel, true)}`)
+      ])
+    : null,
+  createInput(`${name}Input`, [
+    ...Object.keys(fields).map(k => `${k}: ${fieldType(fields[k], true)}`),
+    ...Object.entries(relationships)
+      .filter(([k, rel]) => !rel.readonly)
+      .map(([k, rel]) => `${k}: ${relationshipType(rel, true)}`)
+  ]),
+  createInput(`${name}MutationInput`, [
+    ...flatMap(Object.keys(fields).filter(k => k != "_id"), k => fieldMutations(k, fields)),
+    ...Object.entries(relationships)
+      .filter(([k, rel]) => !rel.oneToMany)
+      .map(([k, rel]) => (rel.__isArray ? `${k}_ADD: ${relationshipType(rel, true)}` : `${k}_SET: ${relationshipType(rel, true)}`))
+  ]),
+  objectToCreate.__usedInArray ? createInput(`${name}ArrayMutationInput`, ["index: Int", `Updates: ${name}MutationInput`]) : null,
+  createInput(
+    `${name}Sort`,
+    Object.keys(fields)
+      .filter(k => objectToCreate.fields[k] !== JSONType)
+      .map(k => `${k}: Int`)
+  ),
+  createInput(`${name}Filters`, allQueryFields.concat([`OR: [${name}Filters]`]))
+]
+  .filter(s => s)
+  .join("\n\n")}
   
 \`;
   
@@ -87,14 +101,34 @@ ${[
 `;
 
   function createMutationType() {
+    let oneToManyForSingle = relationshipEntries
+      .filter(([k, rel]) => rel.oneToMany && rel.fkField == "_id")
+      .map(([k, rel]) => `${k}_ADD: [${rel.type.__name}Input]`);
+
+    let oneToManyForMulti = relationshipEntries
+      .filter(([k, rel]) => rel.oneToMany && rel.fkField == "_id" && /Array/.test(rel.type.fields[rel.keyField]))
+      .map(([k, rel]) => `${k}_ADD: [${rel.type.__name}Input]`);
+
     let allMutations = [
-      createOperation(`create${name}`, [`${name}: ${name}Input`], `${name}MutationResult`),
-      createOperation(`update${name}`, [`_id: ${fieldType(fields._id)}`, `Updates: ${name}MutationInput`], `${name}MutationResult`),
-      createOperation(`update${name}s`, [`_ids: [String]`, `Updates: ${name}MutationInput`], `${name}MutationResultMulti`),
-      createOperation(`update${name}sBulk`, [`Match: ${name}Filters`, `Updates: ${name}MutationInput`], `${name}BulkMutationResult`),
-      createOperation(`delete${name}`, [`_id: String`], "Boolean"),
+      ...(!readonly
+        ? [
+            createOperation(`create${name}`, [`${name}: ${name}Input`], `${name}MutationResult`),
+            createOperation(
+              `update${name}`,
+              [`_id: ${fieldType(fields._id)}`, `Updates: ${name}MutationInput`, ...oneToManyForSingle],
+              `${name}MutationResult`
+            ),
+            createOperation(
+              `update${name}s`,
+              [`_ids: [String]`, `Updates: ${name}MutationInput`, ...oneToManyForMulti],
+              `${name}MutationResultMulti`
+            ),
+            createOperation(`update${name}sBulk`, [`Match: ${name}Filters`, `Updates: ${name}MutationInput`], `${name}BulkMutationResult`),
+            createOperation(`delete${name}`, [`_id: String`], "DeletionResultInfo")
+          ]
+        : []),
       ...schemaSources.map((src, i) => TAB + "${SchemaExtras" + (i + 1) + '.Mutation || ""}')
-    ];
+    ].filter(x => x);
     return "export const mutation = `\n\n" + allMutations.filter(s => s).join("\n\n") + "\n\n`;";
   }
 
@@ -138,11 +172,11 @@ function fieldType(value, useInputs) {
     }
   } else if (typeof value === "object") {
     if (value.__isArray) {
-      return `[${value.type.__name}${useInputs ? "Input" : ""}]`;
+      return `[${value.type.__name}${useInputs ? (value.type.hasOneToManyRelationship ? "InputLocal" : "Input") : ""}]`;
     } else if (value.__isLiteral) {
       return value.type;
     } else if (value.__isObject) {
-      return `${value.type.__name}${useInputs ? "Input" : ""}`;
+      return `${value.type.__name}${useInputs ? (value.type.hasOneToManyRelationship ? "InputLocal" : "Input") : ""}`;
     }
   }
 }
@@ -172,6 +206,8 @@ function fieldMutations(k, fields) {
       return [`${k}: Int`, `${k}_INC: Int`, `${k}_DEC: Int`];
     } else if (value === "Float") {
       return [`${k}: Float`, `${k}_INC: Int`, `${k}_DEC: Int`];
+    } else if (value === JSONType) {
+      return [`${k}: JSON`];
     } else if (value === StringArrayType) {
       return [
         `${k}: [String]`,
@@ -240,9 +276,6 @@ function queriesForField(fieldName, realFieldType) {
   let result = [];
   let fieldType = realFieldType === DateType || realFieldType === MongoIdType ? "String" : realFieldType;
   switch (realFieldType) {
-    case BoolType:
-      result.push(`${fieldName}: Boolean`);
-      break;
     case StringType:
       result.push(...[`${fieldName}_contains`, `${fieldName}_startsWith`, `${fieldName}_endsWith`, `${fieldName}_regex`].map(p => `${p}: String`));
       break;
@@ -293,10 +326,17 @@ function queriesForField(fieldName, realFieldType) {
       result.push(`${fieldName}: ${fieldType}`);
       result.push(`${fieldName}_ne: ${fieldType}`);
       result.push(`${fieldName}_in: [${fieldType}]`);
+      break;
+    case JSONType:
+      result.push(`${fieldName}: ${fieldType}`);
+      result.push(`${fieldName}_ne: ${fieldType}`);
+      result.push(`${fieldName}_in: [${fieldType}]`);
   }
 
-  if (realFieldType.__isObject || realFieldType.__isArray) {
+  if (realFieldType.__isArray) {
     result.push(`${fieldName}_count: Int`);
+  }
+  if (realFieldType.__isObject || realFieldType.__isArray) {
     result.push(`${fieldName}: ${realFieldType.type.__name}Filters`);
   }
 

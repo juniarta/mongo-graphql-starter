@@ -7,6 +7,17 @@ export default function createMasterSchema(names, namesWithTables, namesWithoutT
   return `${schemaImports}
     
 export default \`
+  scalar JSON
+
+  type DeletionResultInfo {
+    success: Boolean,
+    Meta: MutationResultInfo
+  }
+
+  type MutationResultInfo {
+    transaction: Boolean,
+    elapsedTime: Int
+  }
 
   type QueryResultsMetadata {
     count: Int

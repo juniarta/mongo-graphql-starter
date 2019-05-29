@@ -10,6 +10,7 @@ export const FloatType = "Float";
 export const FloatArrayType = "FloatArray";
 export const DateType = "Date";
 export const BoolType = "Boolean";
+export const JSONType = "JSON";
 
 export const arrayOf = type => {
   type.__usedInArray = true;
@@ -45,49 +46,4 @@ export const formattedDate = options => {
     ...options,
     __isDate: true
   };
-};
-
-export const relationshipHelpers = {
-  projectIds: (source, field, { type, fkField }) => {
-    if (!source.relationships) {
-      source.relationships = {};
-    }
-
-    let result = {
-      type,
-      fkField,
-      __isArray: true
-    };
-
-    if (fkField) {
-      let sourceField = source.fields[fkField];
-
-      if (!(sourceField === StringArrayType || sourceField === MongoIdArrayType)) {
-        throw "Invalid type for foreign key " + fkField + " which is type " + sourceField + ". Use a StringArray or MongoIdArray instead";
-      }
-    }
-
-    source.relationships[field] = result;
-  },
-  projectId: (source, field, { type, fkField }) => {
-    if (!source.relationships) {
-      source.relationships = {};
-    }
-
-    let result = {
-      type,
-      fkField,
-      __isObject: true
-    };
-
-    if (fkField) {
-      let sourceField = source.fields[fkField];
-
-      if (!(sourceField === StringType || sourceField === MongoIdType)) {
-        throw "Invalid type for foreign key " + fkField + " which is type " + sourceField + ". Use a String or MongoId instead";
-      }
-    }
-
-    source.relationships[field] = result;
-  }
 };

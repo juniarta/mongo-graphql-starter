@@ -1,13 +1,17 @@
-    async update${objName}sBulk(root, args, context, ast) {
-      let db = await root.db;
-      let { $match } = decontructGraphqlQuery(args.Match, ast, ${objName}Metadata);
-      let updates = await getUpdateObject(args.Updates || {}, ${objName}Metadata, { db, dbHelpers, hooksObj, root, args, context, ast });
+import { mutationStart, mutationError, mutationOver, mutationMeta, mutationComplete } from "../mutationHelpers";
 
-      if (await processHook(hooksObj, "${objName}", "beforeUpdate", $match, updates, root, args, context, ast) === false) {
-        return { success: true };
-      }
-      await dbHelpers.runUpdate(db, "${table}", $match, updates, { multi: true });
-      await processHook(hooksObj, "${objName}", "afterUpdate", $match, updates, root, args, context, ast);
+export default ({ objName, table }) => `    async update${objName}sBulk(root, args, context, ast) {
+      ${mutationStart({ objName, op: "update" })}
+      return await resolverHelpers.runMutation(session, transaction, async() => {
+        let { $match } = decontructGraphqlQuery(args.Match, ast, ${objName}Metadata);
+        let updates = await getUpdateObject(args.Updates || {}, ${objName}Metadata, { ...gqlPacket, db, session });
 
-      return { success: true };
-    }
+        if (await runHook("beforeUpdate", $match, updates, { ...gqlPacket, db, session }) === false) {
+          return { success: true };
+        }
+        await dbHelpers.runUpdate(db, "${table}", $match, updates, { session });
+        await runHook("afterUpdate", $match, updates, { ...gqlPacket, db, session });
+
+        return await resolverHelpers.finishSuccessfulMutation(session, transaction);
+      });
+    }`;

@@ -2,9 +2,9 @@ import { MongoClient } from "mongodb";
 import { graphql } from "graphql";
 
 let connectionUid = 1;
-const localConn = "mongodb://localhost:27017/mongo-graphql-starter";
+const localConn = "mongodb://127.0.0.1:27017/mongo-graphql-starter";
 
-export const nextConnectionString = () => localConn;
+export const nextConnectionString = () => process.env.MongoAddr || localConn;
 
 export async function runQuery({ schema, db, query, variables, coll, results, meta }) {
   let allResults = await graphql(schema, query, { db }, {});
@@ -67,11 +67,29 @@ export async function queryAndMatchArray({ schema, db, query, variables, coll, r
   }
 }
 
-export async function runMutation({ schema, db, mutation, variables, result, rawResult }) {
-  let mutationResult = await graphql(schema, `mutation{${mutation}}`, { db }, {});
+export async function runMutation({ schema, db, client, mutation, variables, noValidation, result, rawResult, expectedError }) {
+  if (mutation == null) {
+    throw "NO MUTATION PASSED IN";
+  }
+
+  let mutationResult = await graphql(schema, `mutation{${mutation}}`, { db, client }, {});
+
+  if (noValidation) {
+    return;
+  }
 
   if (rawResult) {
     return mutationResult.data[rawResult];
+  }
+
+  if (expectedError) {
+    if (!mutationResult.errors) {
+      throw "Expected error " + expectedError + " but got none";
+    }
+    if (!mutationResult.errors.find(e => expectedError.test(e))) {
+      throw "Expected error " + expectedError + " but got " + mutationResult.errors.join("\n\n");
+    }
+    return;
   }
 
   if (mutationResult.errors) {

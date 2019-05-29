@@ -1,60 +1,64 @@
+[![npm version](https://img.shields.io/npm/v/mongo-graphql-starter.svg?style=flat)](https://www.npmjs.com/package/mongo-graphql-starter) [![Build Status](https://travis-ci.com/arackaf/mongo-graphql-starter.svg?branch=master)](https://travis-ci.com/arackaf/mongo-graphql-starter) [![codecov](https://codecov.io/gh/arackaf/mongo-graphql-starter/branch/master/graph/badge.svg)](https://codecov.io/gh/arackaf/mongo-graphql-starter) [![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4.svg)](https://github.com/prettier/prettier)
+
+
 # mongo-graphql-starter
 
 This utility will scaffold GraphQL schema and resolvers, with queries, filters and mutations working out of the box, based on metadata you enter about
 your Mongo db.
 
 The idea is to auto-generate the mundane, repetative boilerplate needed for a graphQL endpoint, then get out of your way, leaving you to code your odd
-or advanced edge cases as needed.
+or advanced edge cases as needed. 
 
 <!-- TOC -->
 
 - [Prior art](#prior-art)
 - [How do you use it?](#how-do-you-use-it)
-    - [Valid types for your fields](#valid-types-for-your-fields)
-    - [Circular dependencies are fine](#circular-dependencies-are-fine)
+  - [Valid types for your fields](#valid-types-for-your-fields)
+  - [Readonly types](#readonly-types)
+  - [Circular dependencies are fine](#circular-dependencies-are-fine)
 - [Queries created](#queries-created)
-    - [Projecting results from queries](#projecting-results-from-queries)
-    - [Custom query arguments](#custom-query-arguments)
+  - [Projecting results from queries](#projecting-results-from-queries)
+  - [Custom query arguments](#custom-query-arguments)
 - [Filters created](#filters-created)
-    - [String filters](#string-filters)
-    - [String array filters](#string-array-filters)
-    - [Int filters](#int-filters)
-    - [Int array filters](#int-array-filters)
-    - [Float filters](#float-filters)
-    - [Float array filters](#float-array-filters)
-    - [Date filters](#date-filters)
-    - [Formatting dates](#formatting-dates)
-    - [OR Queries](#or-queries)
-    - [Nested object and array filters](#nested-object-and-array-filters)
-    - [Sorting](#sorting)
-    - [Paging](#paging)
+  - [null values](#null-values)
+  - [String filters](#string-filters)
+  - [String array filters](#string-array-filters)
+  - [Int filters](#int-filters)
+  - [Int array filters](#int-array-filters)
+  - [Float filters](#float-filters)
+  - [Float array filters](#float-array-filters)
+  - [Date filters](#date-filters)
+  - [Formatting dates](#formatting-dates)
+  - [OR Queries](#or-queries)
+  - [Nested object and array filters](#nested-object-and-array-filters)
+  - [Sorting](#sorting)
+  - [Paging](#paging)
 - [Mutations](#mutations)
-    - [Creations](#creations)
-    - [Updates](#updates)
-        - [The Updates argument](#the-updates-argument)
-    - [Deleting](#deleting)
-    - [Mutation examples](#mutation-examples)
+  - [Creations](#creations)
+  - [Updates](#updates)
+    - [The Updates argument](#the-updates-argument)
+  - [Deleting](#deleting)
+  - [Mutation examples](#mutation-examples)
+- [Transactions](#transactions)
 - [Integrating custom content](#integrating-custom-content)
-    - [schemaSources example](#schemasources-example)
-    - [resolverSources example](#resolversources-example)
-- [Defining relationships between types (wip)](#defining-relationships-between-types-wip)
-    - [Defining an array of foreign keys](#defining-an-array-of-foreign-keys)
-    - [Defining a single foreign key](#defining-a-single-foreign-key)
-    - [Using relationships](#using-relationships)
-    - [Creating related data](#creating-related-data)
-        - [In creations](#in-creations)
-        - [In updates](#in-updates)
-        - [Lifecycle hooks](#lifecycle-hooks)
-- [Lifecycle hooks](#lifecycle-hooks-1)
-    - [All available hooks](#all-available-hooks)
-        - [The `queryPacket` argument to the queryMiddleware hook](#the-querypacket-argument-to-the-querymiddleware-hook)
-    - [How to use processing hooks](#how-to-use-processing-hooks)
-        - [Doing asynchronous processing in hooks.](#doing-asynchronous-processing-in-hooks)
-        - [Reusing code across types' hooks](#reusing-code-across-types-hooks)
+  - [schemaSources example](#schemasources-example)
+  - [resolverSources example](#resolversources-example)
+- [Defining relationships between types](#defining-relationships-between-types)
+  - [Using relationships](#using-relationships)
+  - [Creating related data](#creating-related-data)
+    - [In creations](#in-creations)
+    - [In updates (not one-to-many)](#in-updates-not-one-to-many)
+    - [In updates (one-to-many)](#in-updates-one-to-many)
+    - [In lifecycle hooks](#in-lifecycle-hooks)
+- [Lifecycle hooks](#lifecycle-hooks)
+  - [All available hooks](#all-available-hooks)
+    - [The `queryPacket` argument to the queryMiddleware hook](#the-querypacket-argument-to-the-querymiddleware-hook)
+  - [How to use processing hooks](#how-to-use-processing-hooks)
+    - [Customizing the location of your hooks file.](#customizing-the-location-of-your-hooks-file)
+    - [Doing asynchronous processing in hooks.](#doing-asynchronous-processing-in-hooks)
+    - [Reusing code across types' hooks](#reusing-code-across-types-hooks)
 - [A closer look at what's generated](#a-closer-look-at-whats-generated)
-- [What does the generated code look like?](#what-does-the-generated-code-look-like)
-    - [All code is extensible.](#all-code-is-extensible)
-- [What's next](#whats-next)
+  - [All code is extensible.](#all-code-is-extensible)
 
 <!-- /TOC -->
 
@@ -99,17 +103,18 @@ const {
   arrayOf,
   objectOf,
   formattedDate,
+  JSONType,
   typeLiteral
 } = dataTypes;
 
-const Author = {
+export const Author = {
   fields: {
     name: StringType,
     birthday: DateType
   }
 };
 
-const Book = {
+export const Book = {
   table: "books",
   fields: {
     _id: MongoIdType,
@@ -125,22 +130,17 @@ const Book = {
     primaryAuthor: objectOf(Author),
     strArrs: typeLiteral("[[String]]"),
     createdOn: DateType,
-    createdOnYearOnly: formattedDate({ format: "%Y" })
+    createdOnYearOnly: formattedDate({ format: "%Y" }),
+    jsonContent: JSONType
   }
 };
 
-const Subject = {
+export const Subject = {
   table: "subjects",
   fields: {
     _id: MongoIdType,
     name: StringType
   }
-};
-
-export default {
-  Book,
-  Subject,
-  Author
 };
 ```
 
@@ -148,7 +148,7 @@ Now tell mongo-graphql-starter to create your schema and resolvers, like this
 
 ```javascript
 import { createGraphqlSchema } from "mongo-graphql-starter";
-import projectSetup from "./projectSetupA";
+import * as projectSetup from "./projectSetupA";
 
 import path from "path";
 
@@ -160,7 +160,9 @@ file, which are aggregates over all the types.
 
 ![Image of basic scaffolding](docs-img/initialCreated.png)
 
-Now tell Express about it—and don't forget to add a root object with a `db` property that resolves to a connection to your database.
+Now tell Express about it—and don't forget to add a root object with a `db` property that resolves to a connection to your database. If you're on Mongo 4 or higher, be sure to also add a `client` property that resolves to your Mongo client instance, which will be used to create sessions and transactions, for multi-document operations. 
+
+If needed, `db` and `client` can be functions which returns a promise resolving to those things.
 
 Here's what a minimal, complete example might look like.
 
@@ -173,10 +175,11 @@ import { makeExecutableSchema } from "graphql-tools";
 import express from "express";
 
 const app = express();
-const dbPromise = MongoClient.connect("mongodb://localhost:27017/mongo-graphql-starter");
-const root = {
-  db: dbPromise
-};
+
+const mongoClientPromise = MongoClient.connect(connString, { useNewUrlParser: true });
+const mongoDbPromise = mongoClientPromise.then(client => client.db(dbName));
+
+const root = { client: mongoClientPromise, db: mongoDbPromise };
 const executableSchema = makeExecutableSchema({ typeDefs: schema, resolvers });
 
 app.use(
@@ -214,6 +217,7 @@ const {
   arrayOf,
   objectOf,
   formattedDate,
+  JSONType,
   typeLiteral
 } = dataTypes;
 ```
@@ -231,39 +235,40 @@ const {
 | `FloatArrayType`   | An array of floating point numbers |
 | `DateType`         | Will create your field as a string, but any filters against this field will convert the string arguments you send into a proper date object, before passing to Mongo. Moreoever, querying this date will by default format it as `MM/DD/YYYY`. To override this, use `formattedDate`. |
 | `formattedDate`    | Function: Pass it an object with a format property to create a date field with that (Mongo) format. For example, `createdOnYearOnly: formattedDate({ format: "%Y" })` |
+| `JSONType`         | Store arbitrary json structures in your Mongo collections |
 | `objectOf`         | Function: Pass it a type you've created to specify a single object of that type |
 | `arrayOf`          | Function: Pass it a type you've created to specify an array of that type |
 | `typeLiteral`      | Function: pass it an arbitrary string to specify a field of that GraphQL type. The field will be available in queries, but no filters will be created, though of course you can add your own to the generated code.         |
 
+### Readonly types
+
+Add `readonly: true` to any type if you want only queries, and no mutations (both discussed below) created.  This is useful for any Mongo collections you might have which you want to query via your GraphQL endpoint, but whose data is managed by outside processes. 
+
 ### Circular dependencies are fine
 
-Feel free to have your types reference each other. For example, the following will generate a perfectly valid schema. 
+Feel free to have your types reference each other.  Just use a getter to reference types created downstream. For example, the following will generate a perfectly valid schema. 
 
 ```javascript
 import { dataTypes } from "mongo-graphql-starter";
-const { MongoIdType, StringType, IntType, FloatType, DateType, arrayOf, objectOf, formattedDate, typeLiteral } = dataTypes;
+const { MongoIdType, StringType, arrayOf } = dataTypes;
 
-const Tag = {
+export const Tag = {
   table: "tags",
   fields: {
     _id: MongoIdType,
-    tagName: StringType
+    tagName: StringType,
+    get authors() {
+      return arrayOf(Author);
+    }
   }
 };
 
-const Author = {
+export const Author = {
   table: "authors",
   fields: {
     name: StringType,
     tags: arrayOf(Tag)
   }
-};
-
-Tag.fields.authors = arrayOf(Author);
-
-export default {
-  Author,
-  Tag
 };
 ```
 
@@ -310,7 +315,7 @@ values.
 If you'd like to add custom arguments to these queries, you can do so like this
 
 ```javascript
-const Thing = {
+export const Thing = {
   table: "things",
   fields: {
     name: StringType,
@@ -330,7 +335,7 @@ Now `ManualArg` can be sent over to the `getThing` and `allThings` queries.  Thi
 
 Exact match
 
-`field: <value>` - will match results with exactly that value
+`field: <value>` - will match results with exactly that value.
 
 Not equal
 
@@ -350,6 +355,12 @@ item by item.
 Count
 
 `field_count: <value>` - will match results with that number of entries in the array
+
+### null values
+
+If you pass `null` for an exact match query, matches will be returned if that value is literally `null`, or doesn't exist at all (per Mongo's behavior). If you pass `null` for a not equal (`ne`) query, matches will come back if any value exists.
+
+If you pass `null` for any other filter, it will be ignored.
 
 ### String filters
 
@@ -630,12 +641,22 @@ In addition, the following arguments are supported
 
 [Bulk updates](test/testProject1/bulkUpdate.test.js#L18)
 
+## Transactions
+
+As of version 0.8, this project will use Mongo transactions for any multi-document mutations (creates, updates or deletes), assuming of course your Mongo version supports them (4.0).
+
+If you're on Mongo 4, be sure to provide a `client` object to the root GraphQL object, as discussed at the beginning of these docs. If you do, any mutations which affect more than one document will use a transaction, and only commit when everything is finished. 
+
+To see whether a transaction was used for your mutation, you can query the `Meta` property, which itself has a boolean `transaction` property. See the generated schema for more info.
+
+**NOTE** If you're running from mongod, ie during development, be sure to **not** pass the client value, since this will result in a transaction attempting to start for multi-document operations, and then error out since transactions can only run from mongos, or a replica set. If anyone knows a good way to detect this in code, feel free to send me an issue (or PR).
+
 ## Integrating custom content
 
 This project aims to create as much boilerplate as possible, but of course special use cases will always exist, which require custom code. To accomplish this, you can add metadata to your type definitions indicating where additional schema or resolver code is located; as well as any built-in queries or mutations you'd like to define yourself, instead of using what would otherwise be created by this library.  For example
 
 ```javascript
-const Coordinate = {
+export const Coordinate = {
   table: "coordinates",
   fields: {
     x: IntType,
@@ -717,27 +738,34 @@ Here we've defined our resolver for the `pointAbove` and `allNeighbors` fields (
 
 You can add as many of these files as you need.  Needless to say, if no queries or mutations are being added, those sections can be omitted.
 
-## Defining relationships between types (wip)
+## Defining relationships between types
 
 Relationships can be defined between queryable types. This allows you to normalize your data into separate Mongo collections, related by foreign keys.
 
-This feature is still a work in progress, so expect some things to be missing or incomplete, and of course the API may change.
-
-For the following examples, consider this setup
+To define relationships, add a `relationships` section, like this
 
 ```javascript
 import { dataTypes } from "mongo-graphql-starter";
-const { MongoIdType, MongoIdArrayType, StringType, IntType, FloatType, DateType, relationshipHelpers } = dataTypes;
+const { MongoIdType, MongoIdArrayType, StringType, IntType, FloatType, DateType } = dataTypes;
 
-const Author = {
+export const Author = {
   table: "authors",
   fields: {
     name: StringType,
     birthday: DateType
-  }
+  },
+  relationships: {
+    books: {
+      get type() {
+        return Book;
+      },
+      fkField: "_id",
+      keyField: "authorIds"
+    }
+  }  
 };
 
-const Book = {
+export const Book = {
   table: "books",
   fields: {
     _id: MongoIdType,
@@ -746,51 +774,46 @@ const Book = {
     weight: FloatType,
     mainAuthorId: MongoIdType,
     authorIds: MongoIdArrayType
+  },
+  relationships: {
+    authors: {
+      get type() {
+        return Author;
+      },
+      fkField: "authorIds"
+    },
+    mainAuthor: {
+      get type() {
+        return Author;
+      },
+      fkField: "mainAuthorId"
+    }
   }
 };
 ```
 
-### Defining an array of foreign keys
+For each relationship, the object key (ie `books`, `authors`, `mainAuthor` above) will be the name of the object or array created in the GraphQL schema. If the foreign key is an array, then the resulting property will always be an array (we'll refer to these collections as `many-to-many`). If the foreign key is not an array, then an object will be created if the `keyField` is `_id` (which we'll call `one-to-one`), which is the default, otherwise an array will be created (`one-to-many`). This behavior can be overridden by specifying `oneToOne` or `oneToMany`, described below.
 
-To declare that the Book type's `authorIds` field represents an array of foreign keys to the authors collection, you'd use the
-`relationshipHelpers.projectIds` method, like so
+For `one-to-one` and `many-to-many` relationships, when creating new objects using the `create<Type>` mutation, any specified new members of the relationship will be created **before** the new parent object, with the parent object's `<foreignKey>` field being set, or added to for arrays, from the new relationship object's `keyField`, whatever it is.
 
-```javascript
-relationshipHelpers.projectIds(Book, "authors", {
-  type: Author,
-  fkField: "authorIds"
-});
-```
+For `one-to-many` relationships, after creating new objects using the `create<Type>` mutation, any specified new members of the relationship will be created **after** the parent object, with the related objects' `<keyKey>` field being set, or added to for arrays, from the new relationship object's `<foreignKey>`, whatever it is (though usually `_id`).
 
-This adds a new `authors` array to the Book type, which are read from the authors collection, by `_id`, based on the values in a book's `authorIds`
-array. Note that `authorIds` must either be a `StringArrayType`, or `MongoIdArrayType`.
+| Options               | Default   | Description|
+| --------------------- | --------- | --------------------------------------- |
+| `type`                | (none)    | The type for the relationship. Be sure to use a getter to reference types that are declared downstream. |
+| `fkField`             | (none)    | The foreign key that will be used to look up related objects. |
+| `keyField`            | `_id`     | The field that will be used to look up related objects in their collection. |
+| `oneToOne`            | (none)    | Specify `true` to force the relationship to create a single object, even if the `keyField` is not `_id`. |
+| `oneToMany`           | (none)    | Specify `true` to force the relationship to create an array, regardless of `fkField` and `keyField`.  |
+| `readonly`            | (none)    | If `true` the relationship can only be queried; you won't be able to create relationship instances in the `create` mutation of the containing type.  |
 
-### Defining a single foreign key
-
-To declare that the Book type's `mainAuthorId` represents a foreign key to the authors collection, you'd use the `relationshipHelpers.projectId`
-method, like so
-
-```javascript
-relationshipHelpers.projectId(Book, "mainAuthor", {
-  type: Author,
-  fkField: "mainAuthorId"
-});
-```
-
-This adds a new `mainAuthor` object to the Book type, which is read from the authors collection, by `_id`, based on the value in the book's
-`mainAuthorId` field. Note that `mainAuthorId` must either be a `StringType` or `MongoIdType`.
+For `one-to-many` relationships where the key is `_id`, upon deleting one of the parent objects, all of the "many" objects (who have a foreign key pointing to that `_id` key field) will have those `_id` values removed from the related array, or cleared out if it's a single value.
 
 ### Using relationships
 
-In either case above, the `mainAuthor` object, or `authors` array is of the normal `Author` type, and is requested normally in your GraphQL queries.
+Request these relationships right in your GraphQL queries.  If you do not request anything, then nothing will be fetched from Mongo, as usual. If you do request them, then the ast will be parsed, and only the queried fields will fetched, and returned.  The `dataloader` utility is used to batch the requests for these relationships, so you don't need to worry about select n + 1.
 
-If you do not request anything, then nothing will be fetched from Mongo, as usual. If you do request them, then the ast will be parsed, and only the queried author fields will fetched, and returned.
-
-Note that for any `Book` query, the books from the current query are read from Mongo first. Then, if `authors` or `mainAuthor` is requested, then a
-single query is issued for each, to get the related authors for those books which were just read, which are then matched up appropriately. In other
-words, the generated code does not suffer from the Select N + 1 problem.
-
-For relationships that return a collection of items, like the authors above, you can specify the `SORT` and `SORTS` arguments, like normal.  For example
+For relationships that return a collection of items, like `authors` above, you can specify the `SORT` and `SORTS` arguments, like normal.  For example
 
 ```javascript
 {
@@ -834,7 +857,7 @@ For a relationship defining a single object, it would look like this
 `createBook(Book: {title: "New Book", mainAuthor: { name: "New Author" }}){Book{_id, title, mainAuthor{name}}}`
 ```
 
-#### In updates
+#### In updates (not one-to-many)
 
 For relationships which define an array, like `authors`, there will be a `<relationshipName>_ADD` property on the `Updates` object of all update mutations. This property will accept an array of new objects to be created, with the new IDs being added to the current object's foreign key field.  For example
 
@@ -850,7 +873,11 @@ Similarly, for relationships that define a single object, there will be a `<rela
 `updateBook(_id: "${book1._id}", Updates: {mainAuthor_SET: { name: "ABORT" }}){Book{title}}`
 ```
 
-#### Lifecycle hooks
+#### In updates (one-to-many)
+
+There's a number of tricky edge cases here.  As a result, one-to-many collections can only be updated via args that are created in the updateSingle mutation; updateMulti mutation, if the `keyField` is an array; but not updateBulk. Moreover, these arguments will only be created if the `fkField` on the relationship is `_id`. The reason for this restriction is that that's the only way to guarentee that the corresponding `keyField` on the newly created objects can be correctly set.
+
+#### In lifecycle hooks
 
 Newly created entities will invoke the insert-related lifecycle hooks, just as they would if you were creating them with the `createAuthor` mutation: any `false` return values from the `beforeInsert` hook will result in that particular object being discarded completely, with the rest of the operation proceeding on.  
 
@@ -858,30 +885,33 @@ These lifecycle hooks are discussed below.
 
 ## Lifecycle hooks
 
-Most applications will have some cross-cutting concerns, like authentication. The queries and mutations generated have various hooks that you can tap into, to add custom behavior.
+Most applications will have some cross-cutting concerns, like authentication. The queries and mutations have various hooks that you can tap into, to add custom behavior.
 
 Most of the hooks receive these arguments (and possibly others) which are defined here, once.
 
-| Argument  | Description                                                                                         |
-| --------- | --------------------------------------------------------------------------------------------------- |
-| `root`    | The root object. This will have your db object, and anything else you chose to add to it            |
-| `args`    | The graphQL arguments object                                                                        |
-| `context` | By default your Express request object                                                              |
-| `ast`     | The entire graphQL query AST with complete info about your query: query name, fields requested, etc |
+| Argument   | Description                                                                                         |
+| ---------- | --------------------------------------------------------------------------------------------------- |
+| `db`       | The MongoDB object currently being used                                                             |
+| `session`  | The MongoDB session object, if a `client` object was provided to root. This will be used to control transactions if available (Mongo 4.0 and above)   |
+| `root`     | The root object. This will have your db object, and anything else you chose to add to it            |
+| `args`     | The graphQL arguments object                                                                        |
+| `context`  | By default your Express request object                                                              |
+| `ast`      | The entire graphQL query AST with complete info about your query: query name, fields requested, etc |
+| `hooksObj` | The entire hooks object currently being used |
 
 ### All available hooks
 
 | Hook                                                     | Description   |
 | -------------------------------------------------------- | --------------|
-| `queryPreprocess(root, args, context, ast)`              | Run in `all<Type>s` and `get<Type>` queries before any processing is done. This is a good place to manually adjust arguments the user has sent over; for example, you might manually set or limit the value of `args.PAGE_SIZE` to prevent excessive data from being requested. |
-| `queryMiddleware(queryPacket, root, args, context, ast)` | Called after the args and ast are parsed, and turned into a Mongo query, but before the query is actually run. See below for a full listing of what `queryPacket` contains. This is your chance to adjust the query that's about to be run, possibly to add filters to ensure the user doesn't access data she's not entitled to. |
-| `queryPreAggregate(aggregateItems, root, args, context, ast)` | Called right before any Mongo query is run, giving you the actual aggregation items that are about to be passed into the pipeline. This is your chance to do any one-off, low-level (likely uncommon) adjustments you need. Not only will this be called for all queries, but also for mutations, when loading the created, or updated object to send back down. |
-| `beforeInsert(obj, root, args, context, ast)`            | Called before a new object is inserted. `obj` is the object to be inserted. Return `false` to cancel the insertion |
-| `afterInsert(obj, root, args, context, ast)`            | Called after a new object is inserted. `obj` is the newly inserted object. This could be an opportunity to do any logging on the just-completed insertion.  |
-| `beforeUpdate(match, updates, root, args, context, ast)` | Called before an object is updated. `match` is the filter object that'll be passed directly to Mongo to find the right object. `updates` is the update object that'll be passed to Mongo to make the requested changes. Return `false` to cancel the update.  |
-| `afterUpdate(match, updates, root, args, context, ast)`  | Called after an object is updated. `match` and `updates` are the same as in `beforeUpdate`.  This could be an opportunity to do any logging on the just-completed update.  |
-| `beforeDelete(match, root, args, context, ast)`          | Called before an object is deleted. `match` is the object passed to Mongo to find the right object. Return `false` to cancel the deletion.  |
-| `afterDelete(match, root, args, context, ast)`           | Called after an object is deleted. `match` is the same as in `beforeDelete`  |
+| `queryPreprocess({ root, args, context, ast })`              | Run in `all<Type>s` and `get<Type>` queries before any processing is done. This is a good place to manually adjust arguments the user has sent over; for example, you might manually set or limit the value of `args.PAGE_SIZE` to prevent excessive data from being requested. |
+| `queryMiddleware(queryPacket, { root, args, context, ast })` | Called after the args and ast are parsed, and turned into a Mongo query, but before the query is actually run. See below for a full listing of what `queryPacket` contains. This is your chance to adjust the query that's about to be run, possibly to add filters to ensure the user doesn't access data she's not entitled to. |
+| `queryPreAggregate(aggregateItems, { root, args, context, ast })` | Called right before any Mongo query is run, giving you the actual aggregation items that are about to be passed into the pipeline. This is your chance to do any one-off, low-level (likely uncommon) adjustments you need. Not only will this be called for all queries, but also for mutations, when loading the created, or updated object to send back down. |
+| `beforeInsert(obj, { root, args, context, ast })`            | Called before a new object is inserted. `obj` is the object to be inserted. Return `false` to cancel the insertion |
+| `afterInsert(obj, { root, args, context, ast })`            | Called after a new object is inserted. `obj` is the newly inserted object. This could be an opportunity to do any logging on the just-completed insertion.  |
+| `beforeUpdate(match, updates, { root, args, context, ast })` | Called before an object is updated. `match` is the filter object that'll be passed directly to Mongo to find the right object. `updates` is the update object that'll be passed to Mongo to make the requested changes. Return `false` to cancel the update.  |
+| `afterUpdate(match, updates, { root, args, context, ast })`  | Called after an object is updated. `match` and `updates` are the same as in `beforeUpdate`.  This could be an opportunity to do any logging on the just-completed update.  |
+| `beforeDelete(match, { root, args, context, ast })`          | Called before an object is deleted. `match` is the object passed to Mongo to find the right object. Return `false` to cancel the deletion.  |
+| `afterDelete(match, { root, args, context, ast })`           | Called after an object is deleted. `match` is the same as in `beforeDelete`  |
 | `adjustResults(results)`                                 | Called immediately before objects are returned, either from queries, insertions or mutations—basically any generated operation which returns `Type` or `[Type]`—results will always be an array. The actual objects queried from Mongo are passed into this hook. Use this as an opportunity to manually adjust data as needed, ie you can format dates, etc.  |
 
 #### The `queryPacket` argument to the queryMiddleware hook
@@ -956,6 +986,16 @@ will cause every query to have a PAGE_SIZE set to 50, always—except for `Book`
 
 If a hook is defined both in Root, and for a type, then for operations on that type, the root hook will be called first, followed by the one for the type. So above, PAGE_SIZE will first be set to 50, and then to 100.
 
+#### Customizing the location of your hooks file.
+
+If you'd like your hooks defined elsewhere, place the file where desired, and specify the path to it when creating your GraphQL endpoint, like this
+
+```javascript
+createGraphqlSchema(projectSetupE, path.resolve("./test/testProject5"), { hooks: path.resolve(__dirname, "./projectSetup_Hooks.js") })
+```
+
+That will cause the normal hooks file, described above, to not be created, with your resolvers instead importing **this** file, and using the hooks defined therein. 
+
 #### Doing asynchronous processing in hooks.
 
 The code which calls these hook methods will do so with `await`.  That means if you need to do asynchronous work in any of these methods, you can just make the hook itself an async method, and `await` any async operation you need.  Or of course you could also return a Promise, which is essentially the same thing.
@@ -981,9 +1021,6 @@ you're running Node 8.5 or better, and you're using John Dalton's [outstanding E
 to do so) then this code should just work. If any of those conditions are false, you'll need to pipe the results through Babel using your favorite
 build tool.
 
-## What does the generated code look like?
-
-The book project referenced at the beginning of these docs generates [this code](exampleGeneratedCode/bookProject)
 
 ### All code is extensible.
 
@@ -996,6 +1033,3 @@ collection, then it will just generate a basic type, as well as an input type us
 isn't yet used for these types). If the type is backed by a Mongo collection, then the schema file will also contain queries, mutations, and filters;
 and a resolver file will also be created defining the queries and mutations.
 
-## What's next
-
-* Expand existing relationships to allow more options and relationship types
